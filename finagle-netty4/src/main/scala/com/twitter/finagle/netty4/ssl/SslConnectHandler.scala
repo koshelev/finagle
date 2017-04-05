@@ -7,6 +7,28 @@ import io.netty.util.concurrent.{Future => NettyFuture, GenericFutureListener}
 import java.net.SocketAddress
 import javax.net.ssl.SSLSession
 
+private[netty4] class SslServerConnectHandler(ssl: SslHandler) extends ChannelInboundHandlerAdapter { self =>
+
+  override def channelActive(ctx: ChannelHandlerContext): Unit = {
+    val channel = ctx.channel()
+    if (!channel.config().isAutoRead) {
+      channel.read()
+    }
+    super.channelActive(ctx)
+  }
+
+  override def channelRegistered(ctx: ChannelHandlerContext): Unit = {
+    ssl.handshakeFuture().addListener(new GenericFutureListener[NettyFuture[Channel]] {
+        override def operationComplete(future: NettyFuture[Channel]): Unit = {
+          if (future.isSuccess) {
+            ctx.pipeline().remove(self)
+            SslServerConnectHandler.super.channelRegistered(ctx)
+          }
+        }
+    })
+  }
+}
+
 /**
  * Delays the connect promise satisfaction (i.e., `ChannelTransport` creation) until the TLS/SSL
  * handshake is done and [[SSLSession]] validation is succeed (optional).
